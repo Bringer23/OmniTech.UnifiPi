@@ -1,5 +1,5 @@
 # Introduction
-This is a guide for running docker compose to create the foundryvtt instance for the game screen.
+This is a guide for running docker compose to create the Unifi Network Application instance on a Raspberry Pi.
 
 # Raspberry Pi
 __Documentation:__ https://www.raspberrypi.com/software/
@@ -16,7 +16,7 @@ Once the Pi is booted and reachable via SSH, run from this repo:
 
 **Example:**
 ```bash
-./scripts/setup-pi.sh 192.168.1.50 gm ./containers/secrets.json
+./scripts/setup-pi.sh 192.168.1.50 gm ./containers/secrets.env
 ```
 
 The script will:
@@ -29,29 +29,39 @@ The script will:
 
 # Secrets
 
-- `containers/secrets.json` — empty template (committed to repo)
-- `containers/secrets.production.json` — real credentials (gitignored, never committed)
+- `containers/secrets.env` — empty template (committed to repo)
+- `containers/secrets.production.env` — real credentials (gitignored, never committed)
 
-The script automatically detects any `secrets.<environment>.json` file in `containers/` and uses it as the source, copying it to the Pi as `secrets.json`. If multiple environment files exist, the first alphabetically wins.
+The script automatically detects any `secrets.<environment>.env` file in `containers/` and uses it as the source, copying it to the Pi as `secrets.env`. If multiple environment files exist, the first alphabetically wins.
 
-Copy the template and fill in your FoundryVTT credentials:
+Copy the template and fill in your Unifi credentials:
 ```bash
-cp containers/secrets.json containers/secrets.production.json
-nano containers/secrets.production.json
+cp containers/secrets.env containers/secrets.production.env
+nano containers/secrets.production.env
+```
+
+The env file contains:
+```env
+MONGO_USER=unifi
+MONGO_PASS=
+MONGO_INITDB_ROOT_USERNAME=root
+MONGO_INITDB_ROOT_PASSWORD=
 ```
 
 # Repo Structure
 
 | File | Purpose |
 |------|---------|
-| `containers/docker-compose.yml` | Docker Compose config for FoundryVTT |
-| `containers/secrets.json` | Empty secrets template |
+| `containers/docker-compose.yml` | Docker Compose config for Unifi + MongoDB |
+| `containers/secrets.env` | Empty secrets template |
+| `containers/mongo-init.sh` | MongoDB init script — creates Unifi user on first run |
 | `containers/rc.local` | Boot script — starts Docker on Pi startup |
 | `scripts/setup-pi.sh` | Automated Pi provisioning script |
+| `scripts/reset-docker.sh` | Stops all containers and wipes `/docker/data` on the Pi |
 
 # First Run
 
-After the Pi reboots, SSH in and start FoundryVTT for the first time to trigger the download:
+After the Pi reboots, SSH in and start the containers for the first time:
 
 ```bash
 ssh <PI_USER>@<PI_IP>
@@ -59,7 +69,7 @@ cd /docker/compose
 sudo docker compose up
 ```
 
-Stop (Ctrl+C) after FoundryVTT finishes downloading. Subsequent boots will start it automatically via `rc.local`.
+Stop (Ctrl+C) once containers are running. Subsequent boots will start them automatically via `rc.local`.
 
 # Verify
 

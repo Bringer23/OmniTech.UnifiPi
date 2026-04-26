@@ -1,4 +1,4 @@
 docs/superpowers
 
-# Environment-specific secrets (e.g. secrets.production.json)
-containers/*.*.json
+# Environment-specific secrets (e.g. secrets.production.env)
+containers/*.*.env

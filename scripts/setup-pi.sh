@@ -17,11 +17,11 @@ usage() {
   echo ""
   echo "  PI_IP         IP address of the Raspberry Pi"
   echo "  PI_USER       SSH username (e.g. gm)"
-  echo "  SECRETS_FILE  Path to secrets file (e.g. ./containers/secrets.production.json)"
+  echo "  SECRETS_FILE  Path to secrets file (e.g. ./containers/secrets.env)"
   echo ""
   echo "Secret file naming convention:"
-  echo "  <name>.<environment>.json  — environment detected, copied to Pi as <name>.json"
-  echo "  <name>.json                — no environment, copied to Pi as-is"
+  echo "  <name>.<environment>.env  — environment detected, copied to Pi as <name>.env"
+  echo "  <name>.env                — no environment, copied to Pi as-is"
   exit 1
 }
 
@@ -29,6 +29,9 @@ usage() {
 # Paths relative to repo root — edit here if files move
 COMPOSE_RELATIVE="containers/docker-compose.yml"
 RC_LOCAL_RELATIVE="containers/rc.local"
+SECRETS_RELATIVE="containers/secrets.env"
+MONGO_INIT_RELATIVE="containers/mongo-init.sh"
+RESET_DOCKER_RELATIVE="scripts/reset-docker.sh"
 
 # ─── Args ───────────────────────────────────────────────────────────────────
 [[ $# -lt 3 ]] && { usage; }
@@ -66,19 +69,19 @@ ssh_run() {
 # ─── Resolve secrets ─────────────────────────────────────────────────────────
 SECRETS_DIR="$(dirname "$SECRETS_FILE")"
 SECRETS_BASENAME="$(basename "$SECRETS_FILE")"
-SECRETS_STEM="${SECRETS_BASENAME%.json}"
+SECRETS_STEM="${SECRETS_BASENAME%.env}"
 
 # Destination filename on Pi always matches CLI arg
 BASE_NAME="${SECRETS_BASENAME}"
 
-# Scan for environment-specific variants: <stem>.<env>.json, pick first alphabetically
+# Scan for environment-specific variants: <stem>.<env>.env, pick first alphabetically
 SECRETS_SOURCE="$SECRETS_FILE"
-ENV_FILE="$(ls "${SECRETS_DIR}/${SECRETS_STEM}".*.json 2>/dev/null | sort | head -n1 || true)"
+ENV_FILE="$(ls "${SECRETS_DIR}/${SECRETS_STEM}".*.env 2>/dev/null | sort | head -n1 || true)"
 
 if [[ -n "$ENV_FILE" ]]; then
   ENV_BASENAME="$(basename "$ENV_FILE")"
   ENVIRONMENT="${ENV_BASENAME#"${SECRETS_STEM}."}"
-  ENVIRONMENT="${ENVIRONMENT%.json}"
+  ENVIRONMENT="${ENVIRONMENT%.env}"
   SECRETS_SOURCE="$ENV_FILE"
   log "Detected environment file: ${ENV_BASENAME} (environment: ${ENVIRONMENT}) — will copy to Pi as ${BASE_NAME}"
 else
@@ -99,8 +102,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/$COMPOSE_RELATIVE"
 RC_LOCAL_FILE="$REPO_ROOT/$RC_LOCAL_RELATIVE"
+MONGO_INIT_FILE="$REPO_ROOT/$MONGO_INIT_RELATIVE"
+RESET_DOCKER_FILE="$REPO_ROOT/$RESET_DOCKER_RELATIVE"
 
-for f in "$COMPOSE_FILE" "$RC_LOCAL_FILE"; do
+for f in "$COMPOSE_FILE" "$RC_LOCAL_FILE" "$MONGO_INIT_FILE" "$RESET_DOCKER_FILE"; do
   if [[ ! -f "$f" ]]; then
     err "Required file not found: $f"
     exit 1
@@ -130,6 +135,11 @@ else
   log "Docker installed."
 fi
 
+# ─── Add user to docker group ────────────────────────────────────────────────
+log "Adding ${PI_USER} to docker group..."
+ssh_sudo "usermod -aG docker ${PI_USER}"
+log "${PI_USER} added to docker group."
+
 # ─── Create directories ──────────────────────────────────────────────────────
 log "Creating /docker directories..."
 ssh_sudo "mkdir -p /docker/compose /docker/data /docker/scripts"
@@ -141,11 +151,23 @@ sshpass -p "$PI_PASS" scp $SSH_OPTS "$COMPOSE_FILE" "${PI_USER}@${PI_IP}:/tmp/do
 ssh_sudo "mv /tmp/docker-compose.yml /docker/compose/docker-compose.yml"
 log "docker-compose.yml copied."
 
+# ─── Copy mongo-init.js ──────────────────────────────────────────────────────
+log "Copying mongo-init.sh..."
+sshpass -p "$PI_PASS" scp $SSH_OPTS "$MONGO_INIT_FILE" "${PI_USER}@${PI_IP}:/tmp/mongo-init.sh"
+ssh_sudo "mv /tmp/mongo-init.sh /docker/compose/mongo-init.sh && chmod +x /docker/compose/mongo-init.sh"
+log "mongo-init.sh copied."
+
 # ─── Copy secrets ────────────────────────────────────────────────────────────
 log "Copying secrets as ${BASE_NAME}..."
 sshpass -p "$PI_PASS" scp $SSH_OPTS "$SECRETS_SOURCE" "${PI_USER}@${PI_IP}:/tmp/${BASE_NAME}"
 ssh_sudo "mv /tmp/${BASE_NAME} /docker/compose/${BASE_NAME}"
 log "Secrets copied."
+
+# ─── Copy reset-docker.sh ────────────────────────────────────────────────────
+log "Copying reset-docker.sh..."
+sshpass -p "$PI_PASS" scp $SSH_OPTS "$RESET_DOCKER_FILE" "${PI_USER}@${PI_IP}:/tmp/reset-docker.sh"
+ssh_sudo "mv /tmp/reset-docker.sh /docker/scripts/reset-docker.sh && chmod +x /docker/scripts/reset-docker.sh"
+log "reset-docker.sh copied."
 
 # ─── Copy rc.local ───────────────────────────────────────────────────────────
 log "Copying rc.local to /etc/rc.local..."
