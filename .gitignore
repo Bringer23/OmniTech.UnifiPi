@@ -1,0 +1,4 @@
+docs/superpowers
+
+# Environment-specific secrets (e.g. secrets.production.json)
+containers/*.*.json
