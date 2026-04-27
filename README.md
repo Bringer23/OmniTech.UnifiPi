@@ -79,3 +79,25 @@ SSH into the Pi after reboot and check containers are running:
 ssh <PI_USER>@<PI_IP>
 sudo docker ps
 ```
+
+# Troubleshooting
+
+## Force Adoption of Older Access Points
+
+Older APs may not auto-discover the controller. To manually adopt:
+
+1. SSH into the AP:
+   ```bash
+   ssh ubnt@<AP_IP>
+   ```
+   Default credentials: `ubnt` / `ubnt`
+
+2. In the Unifi UI, start the adoption process for the device (it will show as "Pending Adoption" or you can click Adopt).
+
+3. In the SSH session, run:
+   ```bash
+   set-inform http://X.X.X.X:8080/inform
+   ```
+   Replace `X.X.X.X` with your Pi's IP address.
+
+4. The AP will connect to the controller and complete adoption. You may need to run `set-inform` twice if the first attempt is rejected.
